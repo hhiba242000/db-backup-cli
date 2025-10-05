@@ -155,6 +155,50 @@
       "compression_ratio": 8.581979552943036,
       "backup_type": "full",
       "success": true
+    },
+    {
+      "timestamp": "2025-10-05T13:12:28.757605",
+      "database": "testdb",
+      "db_type": "mysql",
+      "host": "localhost",
+      "error": "mysqldump failed: mysqldump: [Warning] Using a password on the command line interface can be insecure.\nmysqldump: Got error: 2002: Can't connect to local MySQL server through socket '/tmp/mysql.sock' (2) when trying to connect\n",
+      "success": false
+    },
+    {
+      "timestamp": "2025-10-05T13:15:09.527135",
+      "database": "testdb",
+      "db_type": "mysql",
+      "host": "localhost",
+      "file_path": "backups/testdb_mysql_backup_20251005_131509.dump",
+      "size_bytes": 18808,
+      "duration_seconds": 0.052583932876586914,
+      "compression_ratio": 2.6133560187154403,
+      "backup_type": "full",
+      "success": true
+    },
+    {
+      "timestamp": "2025-10-05T13:34:40.225102",
+      "database": "testdb",
+      "db_type": "mysql",
+      "host": "127.0.0.1",
+      "file_path": "backups/testdb_mysql_backup_20251005_133440.dump",
+      "size_bytes": 1458,
+      "duration_seconds": 0.039099931716918945,
+      "compression_ratio": null,
+      "backup_type": "full",
+      "success": true
+    },
+    {
+      "timestamp": "2025-10-05T13:37:06.423890",
+      "database": "testdb",
+      "db_type": "mysql",
+      "host": "127.0.0.1",
+      "file_path": "backups/testdb_mysql_backup_20251005_133706.dump",
+      "size_bytes": 99198,
+      "duration_seconds": 0.05688810348510742,
+      "compression_ratio": 1.8168108227988466,
+      "backup_type": "full",
+      "success": true
     }
   ]
 }

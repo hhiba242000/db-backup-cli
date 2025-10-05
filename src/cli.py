@@ -7,6 +7,8 @@ from .config import Config
 from .logger import BackupLogger, BackupMetadata
 from .notifications import SlackNotifier
 from .verification import BackupVerifier
+from .adapters.mysql import MySQLAdapter
+
 
 verifier = BackupVerifier()
 slack_notifier = SlackNotifier()
@@ -26,7 +28,7 @@ def cli():
 
 @cli.command()
 @click.option('--db-type', 
-              type=click.Choice(['postgres'], case_sensitive=False),
+              type=click.Choice(['postgres','mysql'], case_sensitive=False),
               default=None,
               help='Type of database (default: from .env)')
 @click.option('--host', 
@@ -115,6 +117,8 @@ def backup(db_type, host, port, user, password, database, output, backup_type, o
     
     if db_type == 'postgres':
         adapter = PostgreSQLAdapter(connection_params)
+    elif db_type == 'mysql':
+        adapter = MySQLAdapter(connection_params)
     else:
         click.echo(f"Unsupported database type: {db_type}", err=True)
         sys.exit(1)
@@ -231,7 +235,7 @@ def backup(db_type, host, port, user, password, database, output, backup_type, o
 
 @cli.command()
 @click.option('--db-type', 
-              type=click.Choice(['postgres'], case_sensitive=False),
+              type=click.Choice(['postgres','mysql'], case_sensitive=False),
               default=None)
 @click.option('--host', default=None)
 @click.option('--port', type=int, default=None)
@@ -293,6 +297,8 @@ def restore(db_type, host, port, user, password, database, backup_file, confirm)
     
     if db_type == 'postgres':
         adapter = PostgreSQLAdapter(connection_params)
+    elif db_type == 'mysql':
+        adapter = MySQLAdapter(connection_params)
     else:
         click.echo(f"Unsupported database type: {db_type}", err=True)
         sys.exit(1)
@@ -375,6 +381,10 @@ def stats():
     
 @cli.command()
 @click.argument('backup_file', type=click.Path(exists=True))
+@click.option('--db-type',
+              type=click.Choice(['postgres', 'mysql'], case_sensitive=False),
+              default=None,
+              help='Database type')
 def list_tables(backup_file):
     """
     List all tables in a backup file
@@ -382,9 +392,10 @@ def list_tables(backup_file):
     Example: python3 -m src.cli list-tables backups/testdb_postgres_backup_20251002_220000.dump
     """
     
-    # Load config
-    config = Config.get_database_config()
-    db_type = config.get('type')
+    # Load config if db_type not provided
+    if not db_type:
+        config = Config.get_database_config()
+        db_type = config.get('type', 'postgres')
     
     if db_type == 'postgres':
         # Create a temporary adapter just for listing
@@ -396,6 +407,15 @@ def list_tables(backup_file):
             'database': 'temp'
         }
         adapter = PostgreSQLAdapter(temp_params)
+    elif db_type == 'mysql':
+        temp_params = {
+            'host': 'localhost',
+            'port': 3306,
+            'user': 'temp',
+            'password': 'temp',
+            'database': 'temp'
+        }
+        adapter = MySQLAdapter(temp_params)
     else:
         click.echo("Unsupported database type", err=True)
         sys.exit(1)
@@ -416,7 +436,7 @@ def list_tables(backup_file):
 
 @cli.command()
 @click.option('--db-type', 
-              type=click.Choice(['postgres'], case_sensitive=False),
+              type=click.Choice(['postgres','mysql'], case_sensitive=False),
               default=None)
 @click.option('--host', default=None)
 @click.option('--port', type=int, default=None)
@@ -488,6 +508,8 @@ def restore_tables(db_type, host, port, user, password, database, backup_file, t
     
     if db_type == 'postgres':
         adapter = PostgreSQLAdapter(connection_params)
+    elif db_type == 'mysql':
+        adapter = MySQLAdapter(connection_params)
     else:
         click.echo(f"Unsupported database type: {db_type}", err=True)
         sys.exit(1)
