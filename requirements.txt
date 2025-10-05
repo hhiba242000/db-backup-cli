@@ -1,0 +1,5 @@
+# requirements.txt
+click==8.1.7
+psycopg[binary]>=3.2.0
+python-dotenv==1.0.0
+slack-sdk==3.23.0

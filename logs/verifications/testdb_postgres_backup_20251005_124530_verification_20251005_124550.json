@@ -1,0 +1,18 @@
+{
+  "backup_path": "/Users/hheba/Desktop/db-backup-cli/backups/testdb_postgres_backup_20251005_124530.dump",
+  "timestamp": "2025-10-05T12:45:50.685283",
+  "db_type": "postgres",
+  "checks": {
+    "file_integrity": {
+      "passed": true,
+      "message": "File integrity OK (7238988 bytes)"
+    },
+    "format_validation": {
+      "passed": true,
+      "message": "Valid PostgreSQL backup format (2 tables)"
+    }
+  },
+  "checksum": "45879363ae164e4cb32a99e7364fda1f054d68c45b554cbf635bd9d84be24c72",
+  "overall_status": "PASSED",
+  "summary": "All verification checks passed"
+}
