@@ -1,4 +1,3 @@
-# src/verification.py
 import hashlib
 import subprocess
 from pathlib import Path

@@ -1,4 +1,3 @@
-# src/notifications.py
 import os
 from typing import Optional
 from slack_sdk.webhook import WebhookClient

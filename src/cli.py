@@ -1,4 +1,3 @@
-# src/cli.py
 import click
 from pathlib import Path
 import sys

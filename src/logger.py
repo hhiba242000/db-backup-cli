@@ -1,4 +1,3 @@
-# src/logger.py
 import logging
 from pathlib import Path
 from datetime import datetime

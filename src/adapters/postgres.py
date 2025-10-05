@@ -1,7 +1,7 @@
 # src/adapters/postgres.py
 import subprocess
-import psycopg  # ← Changed from psycopg2
-from psycopg import OperationalError  # ← Changed import path
+import psycopg 
+from psycopg import OperationalError
 import time
 from pathlib import Path
 from datetime import datetime
@@ -169,7 +169,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
             pg_restore_path = 'pg_restore'
         
         cmd = [
-            pg_restore_path,  # ← Use full path
+            pg_restore_path,
             f"--host={self.connection_params['host']}",
             f"--port={self.connection_params['port']}",
             f"--username={self.connection_params['user']}",
@@ -177,7 +177,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
             '--verbose',
             '--clean',
             '--if-exists',
-            backup_path  # ← This should be last
+            backup_path
         ]
         
         env = {'PGPASSWORD': self.connection_params['password']}
