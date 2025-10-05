@@ -8,7 +8,7 @@ from .logger import BackupLogger, BackupMetadata
 from .notifications import SlackNotifier
 from .verification import BackupVerifier
 from .adapters.mysql import MySQLAdapter
-
+from .adapters.mongodb import MongoDBAdapter
 
 verifier = BackupVerifier()
 slack_notifier = SlackNotifier()
@@ -28,7 +28,7 @@ def cli():
 
 @cli.command()
 @click.option('--db-type', 
-              type=click.Choice(['postgres','mysql'], case_sensitive=False),
+              type=click.Choice(['postgres','mysql','mongodb'], case_sensitive=False),
               default=None,
               help='Type of database (default: from .env)')
 @click.option('--host', 
@@ -63,7 +63,7 @@ def backup(db_type, host, port, user, password, database, output, backup_type, o
     """Backup a database"""
     
     # Load config from .env
-    config = Config.get_database_config()
+    config = Config.get_database_config(db_type)
     backup_dir = Config.get_backup_dir()
     
     # Use CLI arguments if provided, otherwise use config
@@ -86,12 +86,20 @@ def backup(db_type, host, port, user, password, database, output, backup_type, o
     # Auto-generate output filename if not provided
     if output is None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{database}_{db_type}_backup_{timestamp}.dump"
+        # Different extensions for different databases
+        if db_type == 'mongodb':
+            extension = '.archive'
+        elif db_type == 'mysql':
+            extension = '.sql'
+        else:  # postgres
+            extension = '.dump'
+        
+        filename = f"{database}_{db_type}_backup_{timestamp}{extension}"
         output = Path(output_dir) / filename
         
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         click.echo(f"Auto-generated filename: {output}\n")
-    
+        
     # Display what we're about to do
     click.echo("=" * 60)
     click.echo("DATABASE BACKUP TOOL")
@@ -119,6 +127,8 @@ def backup(db_type, host, port, user, password, database, output, backup_type, o
         adapter = PostgreSQLAdapter(connection_params)
     elif db_type == 'mysql':
         adapter = MySQLAdapter(connection_params)
+    elif db_type == 'mongodb':
+        adapter = MongoDBAdapter(connection_params)
     else:
         click.echo(f"Unsupported database type: {db_type}", err=True)
         sys.exit(1)
@@ -235,7 +245,7 @@ def backup(db_type, host, port, user, password, database, output, backup_type, o
 
 @cli.command()
 @click.option('--db-type', 
-              type=click.Choice(['postgres','mysql'], case_sensitive=False),
+              type=click.Choice(['postgres','mysql','mongodb'], case_sensitive=False),
               default=None)
 @click.option('--host', default=None)
 @click.option('--port', type=int, default=None)
@@ -256,7 +266,7 @@ def restore(db_type, host, port, user, password, database, backup_file, confirm)
     """Restore a database from backup"""
     
     # Load config from .env
-    config = Config.get_database_config()
+    config = Config.get_database_config(db_type)
     
     # Use CLI arguments if provided, otherwise use config
     db_type = db_type or config.get('type')
@@ -299,6 +309,8 @@ def restore(db_type, host, port, user, password, database, backup_file, confirm)
         adapter = PostgreSQLAdapter(connection_params)
     elif db_type == 'mysql':
         adapter = MySQLAdapter(connection_params)
+    elif db_type == 'mongodb':
+        adapter = MongoDBAdapter(connection_params)
     else:
         click.echo(f"Unsupported database type: {db_type}", err=True)
         sys.exit(1)
@@ -394,7 +406,7 @@ def list_tables(backup_file):
     
     # Load config if db_type not provided
     if not db_type:
-        config = Config.get_database_config()
+        config = Config.get_database_config(db_type)
         db_type = config.get('type', 'postgres')
     
     if db_type == 'postgres':
@@ -436,7 +448,7 @@ def list_tables(backup_file):
 
 @cli.command()
 @click.option('--db-type', 
-              type=click.Choice(['postgres','mysql'], case_sensitive=False),
+              type=click.Choice(['postgres','mysql','mongodb'], case_sensitive=False),
               default=None)
 @click.option('--host', default=None)
 @click.option('--port', type=int, default=None)
@@ -458,14 +470,17 @@ def list_tables(backup_file):
               help='Skip confirmation prompt')
 def restore_tables(db_type, host, port, user, password, database, backup_file, tables, confirm):
     """
-    Restore specific tables from a backup
+    Restore specific tables/collections from a backup
     
+    For SQL databases: tables
+    For MongoDB: collections
+
     Example: 
     python3 -m src.cli restore-tables --input backup.dump --tables users,orders
     """
     
     # Load config
-    config = Config.get_database_config()
+    config = Config.get_database_config(db_type)
     
     # Use CLI arguments if provided, otherwise use config
     db_type = db_type or config.get('type')
@@ -510,6 +525,8 @@ def restore_tables(db_type, host, port, user, password, database, backup_file, t
         adapter = PostgreSQLAdapter(connection_params)
     elif db_type == 'mysql':
         adapter = MySQLAdapter(connection_params)
+    elif db_type == 'mongodb':
+        adapter = MongoDBAdapter(connection_params)
     else:
         click.echo(f"Unsupported database type: {db_type}", err=True)
         sys.exit(1)
@@ -533,7 +550,7 @@ def restore_tables(db_type, host, port, user, password, database, backup_file, t
 @cli.command()
 @click.argument('backup_file', type=click.Path(exists=True))
 @click.option('--db-type', 
-              type=click.Choice(['postgres'], case_sensitive=False),
+              type=click.Choice(['postgres','mysql','mongodb'], case_sensitive=False),
               default='postgres',
               help='Database type')
 def verify(backup_file, db_type):
