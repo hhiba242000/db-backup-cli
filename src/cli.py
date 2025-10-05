@@ -627,5 +627,248 @@ def verify_history(backup_file):
         
         click.echo("-" * 80)
 
+    
+@cli.command()
+@click.option('--databases',
+              default='postgres,mysql,mongodb',
+              help='Comma-separated list of databases to backup')
+@click.option('--apply-retention',
+              is_flag=True,
+              help='Apply retention policy after backups')
+@click.option('--keep-daily',
+              default=7,
+              help='Number of daily backups to keep')
+@click.option('--keep-weekly',
+              default=4,
+              help='Number of weekly backups to keep')
+@click.option('--keep-monthly',
+              default=12,
+              help='Number of monthly backups to keep')
+def backup_all(databases, apply_retention, keep_daily, keep_weekly, keep_monthly):
+    """
+    Backup all configured databases and send summary
+    
+    Example: python3 -m src.cli backup-all
+    Example: python3 -m src.cli backup-all --apply-retention
+    """
+    from .retention import RetentionPolicy
+    
+    db_list = [db.strip() for db in databases.split(',')]
+    results = []
+    
+    click.echo("=" * 60)
+    click.echo("BACKUP ALL DATABASES")
+    click.echo("=" * 60)
+    
+    for db_type in db_list:
+        click.echo(f"\nBacking up {db_type}...")
+        
+        # Load config for this database
+        config = Config.get_database_config(db_type)
+        
+        if not all([config.get('host'), config.get('user'), config.get('password'), config.get('database')]):
+            click.echo(f"  Skipping {db_type}: Missing configuration")
+            results.append({
+                'db_type': db_type,
+                'success': False,
+                'error': 'Missing configuration'
+            })
+            continue
+        
+        # Generate output path
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        if db_type == 'mongodb':
+            extension = '.archive'
+        elif db_type == 'mysql':
+            extension = '.sql'
+        else:
+            extension = '.dump'
+        
+        filename = f"{config['database']}_{db_type}_backup_{timestamp}{extension}"
+        output = Path(Config.get_backup_dir()) / filename
+        
+        # Create adapter
+        connection_params = {
+            'host': config['host'],
+            'user': config['user'],
+            'password': config['password'],
+            'database': config['database']
+        }
+        if config.get('port'):
+            connection_params['port'] = config['port']
+        
+        try:
+            if db_type == 'postgres':
+                adapter = PostgreSQLAdapter(connection_params)
+            elif db_type == 'mysql':
+                adapter = MySQLAdapter(connection_params)
+            elif db_type == 'mongodb':
+                adapter = MongoDBAdapter(connection_params)
+            else:
+                results.append({'db_type': db_type, 'success': False, 'error': 'Unsupported type'})
+                continue
+            
+            # Test connection
+            if not adapter.test_connection():
+                results.append({'db_type': db_type, 'success': False, 'error': 'Connection failed'})
+                click.echo(f"  Connection failed")
+                continue
+            
+            # Perform backup
+            result = adapter.backup(str(output), 'full')
+            
+            # Verify backup
+            verification = verifier.verify_full(str(output), db_type)
+            
+            results.append({
+                'db_type': db_type,
+                'success': result.success,
+                'file': result.file_path if result.success else None,
+                'size_mb': result.size_mb() if result.success else 0,
+                'duration': result.duration_seconds,
+                'verified': verification['overall_status'] == 'PASSED' if result.success else False,
+                'error': result.error_message if not result.success else None
+            })
+            
+            if result.success:
+                click.echo(f"  Success: {result.size_mb():.2f}MB in {result.duration_seconds:.1f}s")
+            else:
+                click.echo(f"  Failed: {result.error_message}")
+            
+        except Exception as e:
+            results.append({'db_type': db_type, 'success': False, 'error': str(e)})
+            click.echo(f"  Error: {e}")
+    
+    # Apply retention policy if requested
+    retention_result = None
+    if apply_retention:
+        click.echo("\nApplying retention policy...")
+        policy = RetentionPolicy()
+        retention_result = policy.apply_policy(keep_daily, keep_weekly, keep_monthly)
+        click.echo(f"  Deleted {retention_result['files_deleted']} old backups")
+        click.echo(f"  Freed {retention_result['space_freed_mb']:.2f}MB")
+    
+    # Send summary to Slack
+    slack = SlackNotifier()
+    
+    success_count = sum(1 for r in results if r['success'])
+    failure_count = len(results) - success_count
+    
+    fields = [
+        {"title": "Total Backups", "value": str(len(results)), "short": True},
+        {"title": "Successful", "value": str(success_count), "short": True},
+        {"title": "Failed", "value": str(failure_count), "short": True},
+        {"title": "Timestamp", "value": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "short": False}
+    ]
+    
+    # Add details for each database
+    for r in results:
+        if r['success']:
+            verified = "✓ verified" if r.get('verified') else ""
+            value = f"{r['size_mb']:.2f}MB in {r['duration']:.1f}s {verified}"
+        else:
+            value = f"Error: {r['error']}"
+        
+        fields.append({
+            "title": r['db_type'].upper(),
+            "value": value,
+            "short": False
+        })
+    
+    # Add retention info if applied
+    if retention_result:
+        fields.append({
+            "title": "Retention Policy",
+            "value": f"Deleted {retention_result['files_deleted']} files, freed {retention_result['space_freed_mb']:.2f}MB",
+            "short": False
+        })
+    
+    message = {
+        "attachments": [{
+            "color": "good" if failure_count == 0 else "warning",
+            "title": "Scheduled Backup Summary",
+            "fields": fields,
+            "footer": "Automated Backup System"
+        }]
+    }
+    
+    if slack.enabled:
+        slack._send(message)
+    
+    # Print summary
+    click.echo("\n" + "=" * 60)
+    click.echo("BACKUP SUMMARY")
+    click.echo("=" * 60)
+    click.echo(f"Total: {len(results)} | Success: {success_count} | Failed: {failure_count}")
+    for r in results:
+        status = click.style("SUCCESS", fg="green") if r['success'] else click.style("FAILED", fg="red")
+        click.echo(f"{r['db_type']:10} - {status}")
+    click.echo("=" * 60)
+    
+    # Exit with error if any failed
+    if failure_count > 0:
+        sys.exit(1)
+
+
+@cli.command()
+@click.option('--keep-daily', default=7, help='Daily backups to keep')
+@click.option('--keep-weekly', default=4, help='Weekly backups to keep')
+@click.option('--keep-monthly', default=12, help='Monthly backups to keep')
+@click.option('--dry-run', is_flag=True, help='Show what would be deleted without deleting')
+def cleanup(keep_daily, keep_weekly, keep_monthly, dry_run):
+    """
+    Clean up old backups based on retention policy
+    
+    Example: python3 -m src.cli cleanup --dry-run
+    """
+    from .retention import RetentionPolicy
+    
+    policy = RetentionPolicy()
+    
+    if dry_run:
+        click.echo("DRY RUN - No files will be deleted")
+    
+    click.echo("\nApplying retention policy...")
+    click.echo(f"Keep: {keep_daily} daily, {keep_weekly} weekly, {keep_monthly} monthly")
+    
+    result = policy.apply_policy(keep_daily, keep_weekly, keep_monthly, dry_run)
+    
+    click.echo("\n" + "=" * 60)
+    click.echo("RETENTION POLICY RESULTS")
+    click.echo("=" * 60)
+    click.echo(f"Files checked:  {result['files_checked']}")
+    click.echo(f"Files kept:     {result['files_kept']}")
+    click.echo(f"Files deleted:  {result['files_deleted']}")
+    click.echo(f"Space freed:    {result['space_freed_mb']:.2f}MB")
+    click.echo("=" * 60)
+    
+    if result['deleted_files']:
+        click.echo("\nDeleted files:")
+        for f in result['deleted_files']:
+            click.echo(f"  - {f}")
+
+
+@cli.command()
+def retention_stats():
+    """Show backup retention statistics"""
+    from .retention import RetentionPolicy
+    
+    policy = RetentionPolicy()
+    stats = policy.get_retention_stats()
+    
+    click.echo("\n" + "=" * 60)
+    click.echo("BACKUP RETENTION STATISTICS")
+    click.echo("=" * 60)
+    click.echo(f"Total backups:  {stats['total_backups']}")
+    click.echo(f"Total size:     {stats['total_size_gb']:.2f}GB ({stats['total_size_mb']:.1f}MB)")
+    click.echo("\nBackups by age:")
+    click.echo(f"  Last 24 hours: {stats['by_age']['last_day']}")
+    click.echo(f"  Last week:     {stats['by_age']['last_week']}")
+    click.echo(f"  Last month:    {stats['by_age']['last_month']}")
+    click.echo(f"  Older:         {stats['by_age']['older']}")
+    click.echo("=" * 60)
+
+
 if __name__ == '__main__':
     cli()

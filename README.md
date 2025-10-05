@@ -1,225 +1,303 @@
-# DB Backup CLI
+# Database Backup CLI
 
-A flexible and extensible command-line database backup tool that supports multiple database types and storage backends.
+A comprehensive command-line tool for backing up and restoring PostgreSQL, MySQL, and MongoDB databases.
 
 ## Features
 
-- **Multiple Database Support**: Currently supports PostgreSQL, with extensible architecture for other databases
-- **Compression**: Built-in gzip compression with configurable compression levels
-- **Flexible Storage**: Local file system storage with pluggable architecture for cloud storage
-- **Configuration Management**: YAML configuration files and environment variable support
-- **Retention Policies**: Automatic cleanup of old backup files
-- **Comprehensive Logging**: Detailed backup process information
-- **Cross-Platform**: Works on Linux, macOS, and Windows
+- **Multi-Database Support**: PostgreSQL, MySQL, MongoDB
+- **Full & Selective Restore**: Restore entire databases or specific tables/collections
+- **Backup Verification**: Automated integrity and format validation
+- **Configuration Management**: Profile-based config with .env support
+- **Retention Policies**: Automatic cleanup of old backups (daily/weekly/monthly)
+- **Slack Notifications**: Real-time alerts for backup operations
+- **Comprehensive Logging**: File-based logs with metadata tracking
+- **Backup History**: Query past backups and verification reports
 
 ## Installation
 
-### From Source
+### Prerequisites
 
 ```bash
-git clone https://github.com/yourusername/db-backup-cli.git
+# Python 3.8+
+python --version
+
+# Docker (for testing)
+docker --version
+
+# Database client tools
+brew install postgresql@15 mysql-client mongodb-database-tools
+```
+
+### Setup
+
+```bash
+# Clone or create project directory
+mkdir db-backup-cli
 cd db-backup-cli
-pip install -e .
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and configure .env
+cp .env.example .env
+# Edit .env with your database credentials
 ```
 
-### Using pip (when published)
+## Configuration
+
+Create a `.env` file with your database configurations:
 
 ```bash
-pip install db-backup-cli
+# PostgreSQL
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=myuser
+POSTGRES_PASSWORD=mypassword
+POSTGRES_DATABASE=mydb
+
+# MySQL
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=myuser
+MYSQL_PASSWORD=mypassword
+MYSQL_DATABASE=mydb
+
+# MongoDB
+MONGODB_HOST=127.0.0.1
+MONGODB_PORT=27017
+MONGODB_USER=myuser
+MONGODB_PASSWORD=mypassword
+MONGODB_DATABASE=mydb
+
+# Backup settings
+BACKUP_DIR=backups
+
+# Slack notifications (optional)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+SLACK_ENABLED=true
+
+# AWS S3 (optional)
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+AWS_S3_BUCKET=your-bucket
+S3_UPLOAD_ENABLED=false
 ```
 
-## Quick Start
+## Usage
 
-### Basic Usage
-
-Create a backup with minimal configuration:
+### Basic Backup Operations
 
 ```bash
-db-backup --database-url "postgresql://user:password@localhost:5432/mydb" --output-dir ./backups
+# Backup a database (uses .env configuration)
+python3 -m src.cli backup --db-type postgres
+python3 -m src.cli backup --db-type mysql
+python3 -m src.cli backup --db-type mongodb
+
+# Override configuration
+python3 -m src.cli backup --db-type postgres --host prod.example.com --user admin
+
+# Manual output path
+python3 -m src.cli backup --db-type postgres --output /path/to/backup.dump
 ```
 
-### Using Configuration File
-
-Create a configuration file `backup_config.yaml`:
-
-```yaml
-database_url: "postgresql://user:password@localhost:5432/mydb"
-database_type: "postgresql"
-output_dir: "./backups"
-enable_compression: true
-compression_level: 6
-backup_name_template: "{database}_{timestamp}.sql"
-retention_days: 30
-verbose: true
-storage_type: "local"
-```
-
-Run the backup:
+### Restore Operations
 
 ```bash
-db-backup --config backup_config.yaml
+# Full restore
+python3 -m src.cli restore --db-type postgres --input backups/backup.dump
+
+# Restore to different database
+python3 -m src.cli restore --db-type postgres --database other_db --input backups/backup.dump
+
+# Skip confirmation (use carefully)
+python3 -m src.cli restore --db-type postgres --input backups/backup.dump --confirm
 ```
 
-## Configuration Options
+### Selective Restore
 
-### Command Line Arguments
+```bash
+# List tables/collections in backup
+python3 -m src.cli list-tables backups/backup.dump --db-type postgres
 
-- `--config, -c`: Configuration file path (default: `backup_config.yaml`)
-- `--database-url`: Database connection URL
-- `--output-dir`: Output directory for backups (default: `./backups`)
-- `--compress`: Enable compression
-- `--verbose, -v`: Verbose output
+# Restore specific tables
+python3 -m src.cli restore-tables --db-type postgres --input backup.dump --tables users,orders
 
-### Configuration File Options
-
-```yaml
-# Database settings
-database_url: "postgresql://user:password@host:port/database"
-database_type: "postgresql"  # Currently only postgresql is supported
-
-# Output settings
-output_dir: "./backups"
-backup_name_template: "{database}_{timestamp}.sql"
-
-# Compression settings
-enable_compression: true
-compression_level: 6  # 1-9, where 9 is maximum compression
-
-# Retention settings
-retention_days: 30  # Delete backups older than 30 days (0 = no cleanup)
-
-# General settings
-verbose: false
-
-# Storage settings
-storage_type: "local"  # Currently only local is supported
-storage_config: {}     # Additional storage-specific configuration
+# Restore specific MongoDB collections
+python3 -m src.cli restore-tables --db-type mongodb --input backup.archive --tables users,sessions
 ```
 
-### Environment Variables
+### Backup All Databases
 
-You can also configure the tool using environment variables:
+```bash
+# Backup all configured databases
+python3 -m src.cli backup-all
 
-- `DATABASE_URL`: Database connection URL
-- `DATABASE_TYPE`: Database type
-- `BACKUP_OUTPUT_DIR`: Output directory
-- `BACKUP_COMPRESSION`: Enable compression (true/false)
-- `BACKUP_COMPRESSION_LEVEL`: Compression level (1-9)
-- `BACKUP_RETENTION_DAYS`: Retention period in days
-- `BACKUP_VERBOSE`: Verbose output (true/false)
-- `STORAGE_TYPE`: Storage type
+# Backup specific databases
+python3 -m src.cli backup-all --databases postgres,mysql
 
-## Database Support
-
-### PostgreSQL
-
-For PostgreSQL databases, the tool uses `pg_dump` which must be installed and available in your PATH.
-
-**Connection URL Format:**
-```
-postgresql://username:password@hostname:port/database_name
+# Backup all and apply retention policy
+python3 -m src.cli backup-all --apply-retention
 ```
 
-**Required Dependencies:**
-- PostgreSQL client tools (`pg_dump`)
-- `psycopg2-binary` Python package
+### Retention Management
+
+```bash
+# View current backup statistics
+python3 -m src.cli retention-stats
+
+# Clean up old backups (dry run)
+python3 -m src.cli cleanup --dry-run
+
+# Apply retention policy
+python3 -m src.cli cleanup --keep-daily 7 --keep-weekly 4 --keep-monthly 12
+
+# Retention policy:
+# - Keep last 7 daily backups
+# - Keep 1 backup per week for last 4 weeks
+# - Keep 1 backup per month for last 12 months
+```
+
+### Verification
+
+```bash
+# Verify backup integrity
+python3 -m src.cli verify backups/backup.dump --db-type postgres
+
+# View verification history
+python3 -m src.cli verify-history
+
+# View history for specific backup
+python3 -m src.cli verify-history --backup-file backups/backup.dump
+```
+
+### Monitoring & History
+
+```bash
+# View backup history
+python3 -m src.cli history
+
+# Filter by database
+python3 -m src.cli history --database mydb --limit 20
+
+# View statistics
+python3 -m src.cli stats
+
+# List S3 backups
+python3 -m src.cli s3-list
+```
+
+## Automated Backups
+
+### Cron Setup (Linux/Mac)
+
+Create `backup_scheduled.sh`:
+
+```bash
+#!/bin/bash
+cd /path/to/db-backup-cli
+source venv/bin/activate
+python3 -m src.cli backup-all --apply-retention
+```
+
+Make executable and add to crontab:
+
+```bash
+chmod +x backup_scheduled.sh
+
+# Edit crontab
+crontab -e
+
+# Add line (runs daily at 2 AM):
+0 2 * * * /path/to/backup_scheduled.sh >> /var/log/backups.log 2>&1
+```
+
+### Common Cron Schedules
+
+```bash
+0 2 * * *       # Daily at 2 AM
+0 2 * * 0       # Weekly on Sunday at 2 AM
+0 2 1 * *       # Monthly on 1st at 2 AM
+*/30 * * * *    # Every 30 minutes
+0 */6 * * *     # Every 6 hours
+```
 
 ## Architecture
 
-The project follows a modular architecture:
-
 ```
-src/
-├── cli.py              # CLI entry point and argument parsing
-├── config.py           # Configuration management
-├── adapters/           # Database adapters
-│   ├── base.py         # Abstract base class for database adapters
-│   └── postgres.py     # PostgreSQL implementation
-├── backup/
-│   ├── engine.py       # Main backup orchestration
-│   └── compressor.py   # Compression logic
-└── storage/
-    └── local.py        # Local file system storage
-```
-
-### Extending the Tool
-
-#### Adding New Database Support
-
-1. Create a new adapter in `src/adapters/` that inherits from `DatabaseAdapter`
-2. Implement all abstract methods
-3. Register the adapter in the backup engine
-
-#### Adding New Storage Backends
-
-1. Create a new storage handler in `src/storage/`
-2. Implement the storage interface
-3. Update the configuration to support the new storage type
-
-## Development
-
-### Setting up Development Environment
-
-```bash
-git clone https://github.com/yourusername/db-backup-cli.git
-cd db-backup-cli
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\\Scripts\\activate
-pip install -e ".[dev]"
-```
-
-### Running Tests
-
-```bash
-pytest
-```
-
-### Code Formatting
-
-```bash
-black src/
-flake8 src/
-mypy src/
+db-backup-cli/
+├── src/
+│   ├── adapters/          # Database-specific implementations
+│   │   ├── base.py        # Abstract base class
+│   │   ├── postgres.py    # PostgreSQL adapter
+│   │   ├── mysql.py       # MySQL adapter
+│   │   └── mongodb.py     # MongoDB adapter
+│   ├── cli.py             # Command-line interface
+│   ├── config.py          # Configuration management
+│   ├── logger.py          # Logging system
+│   ├── notifications.py   # Slack notifications
+│   ├── verification.py    # Backup verification
+│   └── retention.py       # Retention policies
+├── backups/               # Local backup storage
+├── logs/                  # Log files and metadata
+├── .env                   # Configuration (not in git)
+├── requirements.txt       # Python dependencies
+└── README.md             # This file
 ```
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **`pg_dump` not found**: Install PostgreSQL client tools
-2. **Permission denied**: Check write permissions for output directory
-3. **Connection failed**: Verify database URL and network connectivity
-
-### Debug Mode
-
-Run with verbose output to see detailed information:
+### Connection Issues
 
 ```bash
-db-backup --verbose --config backup_config.yaml
+# Test database connection manually
+docker exec -it postgres-test psql -U user -d database
+
+# Check if port is accessible
+nc -zv localhost 5432
+
+# Verify credentials in .env
 ```
 
-## Contributing
+### pg_dump/mysqldump not found
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+```bash
+# Add to PATH (Mac)
+echo 'export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 
-## License
+# Verify
+pg_dump --version
+mysqldump --version
+```
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Permission Denied
 
-## Changelog
+```bash
+# Check file permissions
+ls -la backups/
 
-### v0.1.0 (Initial Release)
-- PostgreSQL backup support
-- Local file system storage
-- Gzip compression
-- Configuration file and environment variable support
-- Automatic retention cleanup
-- Cross-platform compatibility
+# Fix permissions
+chmod 755 backups/
+```
 
-Personal-Note:
-dont forget to export:
- export PATH="/opt/homebrew/opt/postgresql@15/bin:$PATH"
+## Best Practices
+
+1. **Test restores regularly** - Backups are worthless if you can't restore
+2. **Use retention policies** - Don't fill your disk
+3. **Enable verification** - Catch corrupted backups early
+4. **Monitor Slack alerts** - Know when backups fail
+6. **Schedule backups** - Automate with cron
+7. **Keep logs** - Review periodically for issues
+
+
+## Support
+
+For issues or questions:
+- Check logs in `logs/`
+- Review verification reports in `logs/verifications/`
+- Test with `--dry-run` flags
+- Verify database connectivity first
